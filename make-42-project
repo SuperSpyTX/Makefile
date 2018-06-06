@@ -1,0 +1,186 @@
+#!/bin/bash
+# Not so proud makefile script generator.
+echo "Makefilegen - Not so proud of it...."
+echo "Oh well..."
+
+cat >/dev/stdout <<EOF
+::::::::: ::::::::::::::::::::  
+:+:    :+:    :+:    :+:    :+: 
++:+    +:+    +:+    +:+    +:+ 
++#++:++#:     +#+    +#++:++#+  
++#+    +#+    +#+    +#+        
+#+#    #+#    #+#    #+#        
+###    #################     
+
+
+
+EOF
+
+rm -f /tmp/mkfilegen*
+
+read -p "# of Targets: " TARGETS
+
+if [ ! $(echo $TARGETS | grep -E "[0-9]+") ]; then
+	echo "Please enter a valid number."
+	exit 0
+fi
+
+echo "Writing header..."
+cat >>/tmp/mkfilegen_header <<EOF
+#* ************************************************************************** */
+#*                                                                            */
+#*                                                        :::      ::::::::   */
+#*   Makefile                                           :+:      :+:    :+:   */
+#*                                                    +:+ +:+         +:+     */
+#*   By: jkrause <jkrause@student.42.us.org>        +#+  +:+       +#+        */
+#*                                                +#+#+#+#+#+   +#+           */
+#*   Created: 2017/04/18 03:42:42 by jkrause           #+#    #+#             */
+#*   Updated: 2018/06/05 18:51:45 by jkrause            ###   ########.fr     */
+#*                                                                            */
+#* ************************************************************************** */
+# ----------------- Version 1.7 --------------------- #
+divert(-1)
+
+EOF
+
+echo "Writing automated config & variable templates..."
+
+cat >>/tmp/mkfilegen_config <<EOF
+# ------------- Real Configuration ------------------ #
+# This is now defined in ./configure.  Please go use that. #
+
+define(MK_NUM_OF_TARGETS, ${TARGETS})
+define(MK_FCLEAN_ON_RE, 0)
+define(MK_DEBUG, 0)
+define(MK_LIBFT_BUILD, 0)
+define(MK_CORRECTION, 0)
+define(MK_LITE, 0)
+
+EOF
+
+cat >>/tmp/mkfilegen_automatedvars <<EOF
+# ------------ Automated Variables ------------------ #
+define(MK_AUTO_ISLINUX, ifelse(esyscmd(uname -s | tr -d '\n'), \`Darwin', 0, 1))
+define(MK_AUTO_COMPILER,ifelse(MK_AUTO_ISLINUX, 1, clang, gcc))
+
+EOF
+
+cat >>/tmp/mkfilegen_automatedconf <<EOF
+divert(0)
+# ------------- Automated Configuration ------------- #
+LFLAGS = ifelse(MK_SUFFIX, ".dylib", -dynamiclib, ifelse(MK_SUFFIX, "", ,-shared))
+CFLAGS = ifelse(MK_DEBUG, 1,-g -DDEBUG=1) -fPIC -Wall -Werror -Wextra ifelse(MK_CORRECTION,1, -DCORRECTION=1)
+EOF
+
+cat >>/tmp/mkfilegen_targetsheader <<EOF
+# ------------------- Targets ----------------------- #
+
+EOF
+
+cat >>/tmp/mkfilegen_targetsbody <<EOF
+%.o: %.c
+	MK_AUTO_COMPILER \$(CFLAGS) -c \$? -o \$@
+EOF
+
+echo "Iterating through targets..."
+for i in $(seq $TARGETS); do
+	read -p "Target name: " TARGET_NAME
+	read -p "Is Library? (Anything = will set flag): " TARGET_ISLIB
+	read -p "Suffix binary (nothing for nothing, .a for lib, .so/.dylib for shared/dynamic object): " TARGET_SUFFIX
+	read -p "Source directories (or .): " TARGET_SRC_DIRS
+	if [ "$TARGET_ISLIB" != "" ]; then
+		TARGET_ISLIB=1
+	else
+		TARGET_ISLIB=0
+	fi
+	if [ "$TARGET_SRC_DIRS" = "" ]; then
+		TARGET_SRC_DIRS="."
+	fi
+	TARGET_NAME_LOWER=$TARGET_NAME
+	TARGET_NAME=$(echo $TARGET_NAME | awk '{print toupper($0)}' | sed -e "s/\-/_/g")
+
+	echo "Writing mkfilegen..."
+	cat >>/tmp/mkfilegen_config <<EOF
+define(MK_${TARGET_NAME}_NAME, ${TARGET_NAME_LOWER})
+define(MK_${TARGET_NAME}_SUFFIX, ${TARGET_SUFFIX})
+define(MK_${TARGET_NAME}_ISLIB, ${TARGET_ISLIB})
+define(MK_${TARGET_NAME}_INCLUDE_DIRS, includes)
+define(MK_${TARGET_NAME}_SRC_DIRS, ${TARGET_SRC_DIRS} ifelse(MK_LIBFT_BUILD, 1, libft, ifelse(MK_LITE, 1, libft-min,  )))
+define(MK_${TARGET_NAME}_DEBUG, 0)
+define(MK_${TARGET_NAME}_LITE, 0)
+
+EOF
+
+	cat >>/tmp/mkfilegen_automatedvars <<EOF
+define(MK_${TARGET_NAME}_AUTO_SRC_DIR, patsubst(MK_${TARGET_NAME}_SRC_DIRS,\` ',\`\`\`\`\`,'''''))
+pushdef(\`MK_${TARGET_NAME}_AUTO_SRC_DIR', ifelse(MK_${TARGET_NAME}_SRC_DIRS,.,.,{MK_${TARGET_NAME}_AUTO_SRC_DIR}))
+define(MK_${TARGET_NAME}_AUTO_SRC, esyscmd(bash -c 'find MK_${TARGET_NAME}_AUTO_SRC_DIR -type f -name "*.c" | sed -e "s/$/ \\\\\\/g"'))
+define(MK_${TARGET_NAME}_AUTO_SRC_DIR, patsubst(MK_${TARGET_NAME}_SRC_DIRS,\` ',\`\`\`,'''))
+define(MK_${TARGET_NAME}_AUTO_INCLUDE_DIR, -I patsubst(MK_${TARGET_NAME}_INCLUDE_DIRS,\` ',\`\`\` -I '''))
+
+EOF
+
+	cat >>/tmp/mkfilegen_automatedconf <<EOF
+${TARGET_NAME}_NAME = defn(\`MK_${TARGET_NAME}_NAME')MK_${TARGET_NAME}_SUFFIX
+CFLAGS += MK_${TARGET_NAME}_AUTO_INCLUDE_DIR
+${TARGET_NAME}_SRC = MK_${TARGET_NAME}_AUTO_SRC
+${TARGET_NAME}_OBJ = \$(subst .c,.o, \$(${TARGET_NAME}_SRC))
+
+EOF
+
+	cat >>/tmp/mkfilegen_targetsbody <<EOF
+
+\$(${TARGET_NAME}_NAME): \$(${TARGET_NAME}_OBJ)
+	MK_AUTO_COMPILER \$(LFLAGS) \$(${TARGET_NAME}_OBJ) -o \$(${TARGET_NAME}_NAME
+	@#/bin/rm -f \$(${TARGET_NAME}_NAME)
+	@#ar rcs \$(${TARGET_NAME}_NAME) \$(${TARGET_NAME}_OBJ))dnl
+
+EOF
+	echo $TARGET_NAME >> /tmp/mkfilegen_names
+done
+
+echo "Building makefile..."
+
+cat >>/tmp/mkfilegen < /tmp/mkfilegen_header
+cat >>/tmp/mkfilegen < /tmp/mkfilegen_config
+cat >>/tmp/mkfilegen < /tmp/mkfilegen_automatedvars
+cat >>/tmp/mkfilegen < /tmp/mkfilegen_automatedconf
+cat >>/tmp/mkfilegen < /tmp/mkfilegen_targetsheader
+
+echo -n "all:" >>/tmp/mkfilegen
+for f in $(cat /tmp/mkfilegen_names); do
+	echo -n " \$(${f}_NAME)" >> /tmp/mkfilegen
+done
+
+echo "
+">> /tmp/mkfilegen
+
+cat >>/tmp/mkfilegen < /tmp/mkfilegen_targetsbody
+
+echo "" >> /tmp/mkfilegen
+
+echo "re: ifelse(MK_FCLEAN_ON_RE, 1,f)clean all dnl" >>/tmp/mkfilegen
+
+echo "
+" >> /tmp/mkfilegen
+
+echo "clean:" >>/tmp/mkfilegen
+for f in $(cat /tmp/mkfilegen_names); do
+	cat >>/tmp/mkfilegen <<EOF
+	/bin/rm -f \$(${f}_OBJ)
+EOF
+done
+
+echo "" >> /tmp/mkfilegen
+
+echo "fclean: clean" >>/tmp/mkfilegen
+for f in $(cat /tmp/mkfilegen_names); do
+	cat >>/tmp/mkfilegen <<EOF
+	/bin/rm -f \$(${f}_NAME)
+EOF
+done
+
+mv /tmp/mkfilegen Makefile.m4
+
+# Disable for autocomplete in vim.
+rm -f /tmp/mkfilegen*
